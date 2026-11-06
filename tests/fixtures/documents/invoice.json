@@ -1,0 +1,1 @@
+{"id":"invoice-0042","kind":"invoice","plantedPii":[{"span":"Priya Sharma","type":"name"},{"span":"priya.sharma@example.com","type":"email"},{"span":"+91-98200-12345","type":"phone"}],"text":"INVOICE #INV-2026-0042\nVendor: Acme Paper Co\nBill To: Priya Sharma\nEmail: priya.sharma@example.com\nPhone: +91-98200-12345\nTotal: Rs 48,200\nDue: 2026-11-20"}

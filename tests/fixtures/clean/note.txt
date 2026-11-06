@@ -1,0 +1,2 @@
+This note is clean: no keys, no tokens, no private material.
+Contact docs@example.com for questions.
