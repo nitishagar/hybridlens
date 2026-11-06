@@ -2,11 +2,11 @@
 // stand-in with fault injection. Mirrors the verified SDK contract:
 // PREFER_* fall back; ONLY_* throw when unavailable, wait while downloading.
 
-export type InferenceMode =
-  | 'PREFER_ON_DEVICE'
-  | 'ONLY_ON_DEVICE'
-  | 'PREFER_IN_CLOUD'
-  | 'ONLY_IN_CLOUD';
+import type { ModelPort } from '../services/hybrid';
+
+// Single source of truth for the mode union lives in services/hybrid.
+import type { AppMode as InferenceMode } from '../services/hybrid';
+export type { InferenceMode };
 
 export type InferenceSource = 'ON_DEVICE' | 'IN_CLOUD' | 'UNKNOWN';
 
@@ -16,6 +16,11 @@ export interface MockWorld {
   online: boolean;
   omitSource?: boolean;
   latencyMs?: number;
+}
+
+export interface MockFaults {
+  fail429?: boolean;
+  hangInit?: boolean;
 }
 
 export interface GenerateSuccess {
@@ -93,5 +98,50 @@ export function mockGenerate(
     case 'ONLY_IN_CLOUD':
       if (!world.online) return fail('OFFLINE', COPIES.offlineCloud);
       return ok('IN_CLOUD', false);
+  }
+}
+
+// SDK-shaped mock port for HybridService tests. Reports lowercase runtime
+// source values ('on_device'/'in_cloud') exactly like the real SDK so the
+// service normalizer is genuinely exercised; omits the field on omitSource.
+export class MockModelPort implements ModelPort {
+  initCalls = 0;
+
+  constructor(
+    readonly mode: InferenceMode,
+    readonly world: MockWorld,
+    readonly faults: MockFaults = {},
+  ) {}
+
+  async initializeDeviceModel(onProgress?: (v: number) => void): Promise<void> {
+    this.initCalls++;
+    onProgress?.(0.1);
+    if (this.faults.hangInit) await new Promise<void>(() => {});
+    onProgress?.(1);
+  }
+
+  async generateContent(prompt: string | unknown[]): Promise<{
+    response: { text: () => string; inferenceSource?: string };
+  }> {
+    if (this.faults.fail429)
+      throw Object.assign(new Error('quota exceeded'), { status: 429 });
+    const p = typeof prompt === 'string' ? prompt : 'image-input';
+    const r = mockGenerate(this.mode, this.world, p);
+    if (r.pending)
+      throw new MockAIError(
+        'DEVICE_UNAVAILABLE',
+        'mock port requires completed init (service must gate)',
+      );
+    return {
+      response: {
+        text: () => r.text,
+        inferenceSource:
+          r.inferenceSource === 'UNKNOWN'
+            ? undefined
+            : r.inferenceSource === 'ON_DEVICE'
+              ? 'on_device'
+              : 'in_cloud',
+      },
+    };
   }
 }
