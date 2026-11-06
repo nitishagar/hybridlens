@@ -6,6 +6,7 @@ import {
   type AvailabilityState,
   type InitState,
 } from '../services/hybrid';
+import { applySpans } from '../services/redact';
 import ModeSwitcher from '../components/ModeSwitcher';
 import RoutingDashboard from '../components/RoutingDashboard';
 import RedactView, { type DocOption } from '../components/RedactView';
@@ -71,7 +72,23 @@ export default function PrivRedactView({
   const [redactRunning, setRedactRunning] = useState(false);
   const [redactedText, setRedactedText] = useState<string | null>(null);
   const [spans, setSpans] = useState<RedactSpan[]>([]);
+  const [manual, setManual] = useState<string[]>([]);
   const [redactError, setRedactError] = useState<string | null>(null);
+
+  // Tap-to-redact: chain manual words over the model output (manual words
+  // can precede model spans in the doc, so union application would miss).
+  const displayText =
+    redactedText === null
+      ? redactedText
+      : applySpans(
+          redactedText,
+          manual.map((text) => ({ text, type: 'manual' })),
+        ).redactedText;
+
+  const toggleManual = (word: string) =>
+    setManual((prev) =>
+      prev.includes(word) ? prev.filter((w) => w !== word) : [...prev, word],
+    );
 
   const [summaryRunning, setSummaryRunning] = useState(false);
   const [summary, setSummary] = useState<DocSummary | null>(null);
@@ -110,6 +127,7 @@ export default function PrivRedactView({
     setInitUi('idle');
     setInitError(null);
     setRedactedText(null);
+    setManual([]);
     setSummary(null);
     setSummaryError(null);
     setReceipts([]);
@@ -153,6 +171,7 @@ export default function PrivRedactView({
     const url = URL.createObjectURL(f);
     setDoc({ imageUrl: url, text: '', spans: [], owned: true });
     setRedactedText(null);
+    setManual([]);
     setSummary(null);
   };
 
@@ -160,6 +179,7 @@ export default function PrivRedactView({
     revokeOwned();
     setDoc({ imageUrl: PLACEHOLDER_IMG, text: d.text, spans: d.spans, owned: false });
     setRedactedText(null);
+    setManual([]);
     setSummary(null);
   };
 
@@ -181,6 +201,7 @@ export default function PrivRedactView({
     if (!doc) return;
     setRedactRunning(true);
     setRedactError(null);
+    setManual([]);
     setSummary(null);
     setSummaryError(null);
     try {
@@ -232,12 +253,15 @@ export default function PrivRedactView({
           <RedactView
             imageUrl={doc?.imageUrl ?? null}
             fixtures={fixtures}
-            redactedText={redactedText}
+            originalText={doc?.text ?? ''}
+            redactedText={displayText}
             spans={spans}
+            manualSpans={manual}
             running={redactRunning}
             onSelectFile={selectFile}
             onSelectFixture={selectFixture}
             onRedact={runRedact}
+            onToggleManual={toggleManual}
           />
           {redactError && <p role="alert">{redactError}</p>}
           <SummaryView

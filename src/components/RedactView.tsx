@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import type { RedactSpan } from './types';
 
+function wordsOf(text: string): { word: string; key: number }[] {
+  return text
+    .split(/\s+/)
+    .filter((w) => w.length > 0)
+    .map((word, key) => ({ word, key }));
+}
+
 export interface DocOption {
   id: string;
   label: string;
@@ -11,32 +18,29 @@ export interface DocOption {
 export default function RedactView({
   imageUrl,
   fixtures,
+  originalText,
   redactedText,
   spans,
+  manualSpans,
   running,
   onSelectFile,
   onSelectFixture,
   onRedact,
+  onToggleManual,
 }: {
   imageUrl: string | null;
   fixtures: DocOption[];
+  originalText: string;
   redactedText: string | null;
   spans: RedactSpan[];
+  manualSpans: string[];
   running: boolean;
   onSelectFile: (f: File) => void;
   onSelectFixture: (d: DocOption) => void;
   onRedact: () => void;
+  onToggleManual: (word: string) => void;
 }) {
   const [revealed, setRevealed] = useState(false);
-  const [manual, setManual] = useState<Set<string>>(new Set());
-
-  const toggleManual = (t: string) =>
-    setManual((prev) => {
-      const next = new Set(prev);
-      if (next.has(t)) next.delete(t);
-      else next.add(t);
-      return next;
-    });
 
   return (
     <section aria-label="Redact">
@@ -84,15 +88,20 @@ export default function RedactView({
         <div>
           <h3>Redacted text</h3>
           <pre data-testid="redacted-text">{redactedText}</pre>
-          <div>
-            {spans.map((s) => (
+          <p>
+            Model spans:{' '}
+            {spans.length === 0
+              ? 'none'
+              : spans.map((s) => `${s.text} (${s.type})`).join(', ')}
+          </p>
+          <div aria-label="Tap a missed word to redact it">
+            {wordsOf(originalText).map(({ word, key }) => (
               <button
-                key={`${s.start}-${s.text}`}
-                data-testid={`span-${s.text}`}
-                data-manual={manual.has(s.text) ? 'true' : 'false'}
-                onClick={() => toggleManual(s.text)}
+                key={key}
+                data-manual={manualSpans.includes(word) ? 'true' : 'false'}
+                onClick={() => onToggleManual(word)}
               >
-                {s.text} ({s.type})
+                {manualSpans.includes(word) ? '███' : word}
               </button>
             ))}
           </div>

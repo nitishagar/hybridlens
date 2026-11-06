@@ -16,6 +16,7 @@ import {
   type MockFaults,
   type MockWorld,
 } from './mock-hybrid';
+import { applySpans } from '../services/redact';
 
 // Mock flow ports for UI tests and offline dev: the REAL HybridService
 // (init machine, badges, errors) over mock model ports, with deterministic
@@ -77,16 +78,12 @@ export class MockFlowPorts implements FlowPorts {
     knownSpans: string[],
   ): Promise<RedactOutcome> {
     const r = await this.service.generate({ prompt: `redact:${docText}` });
-    let redactedText = docText;
-    const spans: RedactSpan[] = [];
-    for (const span of knownSpans) {
-      const idx = redactedText.indexOf(span);
-      if (idx >= 0) {
-        spans.push({ text: span, type: 'pii', start: idx, end: idx + span.length });
-        redactedText =
-          redactedText.slice(0, idx) + '███' + redactedText.slice(idx + span.length);
-      }
-    }
+    // Shared strip engine with the real policy; scripted spans stay exact.
+    const { redactedText, applied } = applySpans(
+      docText,
+      knownSpans.map((text) => ({ text, type: 'pii' as const })),
+    );
+    const spans: RedactSpan[] = applied;
     return {
       redactedText,
       spans,

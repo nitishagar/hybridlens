@@ -249,6 +249,20 @@ describe('probe notice + gesture rule', () => {
   });
 });
 
+describe('tap-to-redact recompute (Phase 4)', () => {
+  it('tapping a missed word redacts it in the displayed output', async () => {
+    const { factory } = makeFactory();
+    const user = await enableAndPickFixture(factory);
+    await user.click(screen.getByText('Redact PII'));
+    const out = await screen.findByTestId('redacted-text');
+    expect(out.textContent).toContain('Acme');
+    await user.click(screen.getByText('Acme', { selector: 'button' }));
+    expect(screen.getByTestId('redacted-text').textContent).not.toContain(
+      'Acme',
+    );
+  });
+});
+
 describe('object URL lifecycle', () => {
   it('revokes on new upload and on unmount', async () => {
     const { factory } = makeFactory();
