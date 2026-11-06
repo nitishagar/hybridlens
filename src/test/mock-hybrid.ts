@@ -21,6 +21,8 @@ export interface MockWorld {
 export interface MockFaults {
   fail429?: boolean;
   hangInit?: boolean;
+  /** When set, init awaits this gate (test releases it) instead of hanging. */
+  initGate?: Promise<void>;
 }
 
 export interface GenerateSuccess {
@@ -106,6 +108,7 @@ export function mockGenerate(
 // service normalizer is genuinely exercised; omits the field on omitSource.
 export class MockModelPort implements ModelPort {
   initCalls = 0;
+  lastInput: string | unknown[] | null = null;
 
   constructor(
     readonly mode: InferenceMode,
@@ -117,12 +120,20 @@ export class MockModelPort implements ModelPort {
     this.initCalls++;
     onProgress?.(0.1);
     if (this.faults.hangInit) await new Promise<void>(() => {});
+    if (this.faults.initGate) await this.faults.initGate;
+    // Completed download flips the world available (unavailable+idle worlds
+    // stay put: init models the handshake, generate consults the world).
+    if (this.world.deviceDownloading) {
+      this.world.deviceDownloading = false;
+      this.world.deviceAvailable = true;
+    }
     onProgress?.(1);
   }
 
   async generateContent(prompt: string | unknown[]): Promise<{
     response: { text: () => string; inferenceSource?: string };
   }> {
+    this.lastInput = prompt;
     if (this.faults.fail429)
       throw Object.assign(new Error('quota exceeded'), { status: 429 });
     const p = typeof prompt === 'string' ? prompt : 'image-input';

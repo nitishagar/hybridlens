@@ -27,6 +27,7 @@ export interface MockFlowOptions {
   faults?: MockFaults;
   slowInit?: boolean;
   summaryFailuresLeft?: number;
+  timeoutMs?: number;
 }
 
 export class MockFlowPorts implements FlowPorts {
@@ -47,7 +48,9 @@ export class MockFlowPorts implements FlowPorts {
     };
     this.port = new MockModelPort(mode, world, opts.faults ?? {});
     const port = this.port;
-    this.service = new HybridService(mode, () => port, { timeoutMs: 5000 });
+    this.service = new HybridService(mode, () => port, {
+      timeoutMs: opts.timeoutMs ?? 5000,
+    });
     this.summaryFailuresLeft = opts.summaryFailuresLeft ?? 0;
     if (opts.slowInit) {
       const orig = this.service.ensureDeviceModel.bind(this.service);

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   HybridService,
   ServiceError,
+  TIMEOUT_COPY,
   TIMEOUT_MS_DEFAULT,
   assertAllowedModel,
   normalizeSource,
@@ -112,6 +113,99 @@ describe('4-mode matrix vs fault mock', () => {
     expect(r.inferenceSource).toBe('ON_DEVICE');
   });
 
+  it('image requests reach the port as multimodal arrays', async () => {
+    const port = new MockModelPort('PREFER_ON_DEVICE', world({}));
+    const service = new HybridService('PREFER_ON_DEVICE', () => port);
+    await service.ensureDeviceModel();
+    await service.generate({
+      prompt: 'describe',
+      image: { mimeType: 'image/jpeg', base64: 'AAA' },
+    });
+    expect(Array.isArray(port.lastInput)).toBe(true);
+    const parts = port.lastInput as unknown[];
+    expect(parts[0]).toBe('describe');
+    expect(parts[1]).toEqual({
+      inlineData: { mimeType: 'image/jpeg', data: 'AAA' },
+    });
+  });
+
+  it('passes the configured schema to the model factory', async () => {
+    const seen: unknown[] = [];
+    const schema = { marker: 'extraction' };
+    const service = new HybridService(
+      'ONLY_ON_DEVICE',
+      (m, s) => {
+        seen.push(s);
+        return new MockModelPort(m, world({}));
+      },
+      { schema },
+    );
+    await service.ensureDeviceModel();
+    expect(seen).toEqual([schema]);
+  });
+
+  it('ONLY generate waits for in-flight init, then succeeds', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((res) => {
+      release = res;
+    });
+    const port = new MockModelPort(
+      'ONLY_ON_DEVICE',
+      world({ deviceAvailable: false, deviceDownloading: true }),
+      { initGate: gate },
+    );
+    const service = new HybridService('ONLY_ON_DEVICE', () => port);
+    const initP = service.ensureDeviceModel();
+    let settled = false;
+    const genP = service
+      .generate({ prompt: 'hi' })
+      .then((r) => {
+        settled = true;
+        return r;
+      });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(settled).toBe(false);
+    release();
+    const r = await genP;
+    await initP;
+    expect(r.inferenceSource).toBe('ON_DEVICE');
+  });
+
+  it('PREFER generate does not wait for in-flight init (falls back at once)', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((res) => {
+      release = res;
+    });
+    const port = new MockModelPort(
+      'PREFER_ON_DEVICE',
+      world({ deviceAvailable: false, deviceDownloading: true }),
+      { initGate: gate },
+    );
+    const service = new HybridService('PREFER_ON_DEVICE', () => port);
+    const initP = service.ensureDeviceModel();
+    const r = await service.generate({ prompt: 'hi' });
+    expect(r.inferenceSource).toBe('IN_CLOUD');
+    expect(r.fallback).toBe(true);
+    release();
+    await initP;
+  });
+
+  it('maps API_NOT_ENABLED to the friendly device copy', async () => {
+    const service = new HybridService('ONLY_ON_DEVICE', () => ({
+      initializeDeviceModel: async () => {},
+      generateContent: async () => {
+        throw new Error('API_NOT_ENABLED');
+      },
+    }));
+    await service.ensureDeviceModel();
+    const err = await service
+      .generate({ prompt: 'x' })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ServiceError);
+    expect((err as ServiceError).code).toBe('DEVICE_UNAVAILABLE');
+    expect((err as ServiceError).copy).toMatch(/Chrome Desktop/);
+  });
+
   it('generate before init → NEEDS_INIT (gesture rule enforced)', async () => {
     const { service } = svc('ONLY_ON_DEVICE', world({}));
     await expect(service.generate({ prompt: 'hi' })).rejects.toThrow(
@@ -132,9 +226,15 @@ describe('ONLY+downloading wait path', () => {
       expect(TIMEOUT_MS_DEFAULT).toBe(300_000);
       const progress: number[] = [];
       const p = service.ensureDeviceModel((v) => progress.push(v));
-      const assertion = expect(p).rejects.toThrow(/Cancel/);
+      const caught = p.then(
+        () => null,
+        (e: unknown) => e,
+      );
       await vi.advanceTimersByTimeAsync(300_000);
-      await assertion;
+      const err = await caught;
+      expect(err).toBeInstanceOf(ServiceError);
+      expect((err as ServiceError).code).toBe('TIMEOUT');
+      expect((err as ServiceError).copy).toBe(TIMEOUT_COPY);
       expect(progress.length).toBeGreaterThan(0);
       expect(service.getState()).toBe('idle'); // failure resets for re-tap
     } finally {
@@ -164,6 +264,9 @@ describe('ONLY+downloading wait path', () => {
 
 describe('allowlist + errors + config', () => {
   it('allowlist rejects unknown model', () => {
+    expect(() =>
+      assertAllowedModel('gemini-3.5-flash-lite'),
+    ).not.toThrow();
     expect(() => assertAllowedModel('evil-model')).toThrow(/allowlist/);
     expect(
       () =>

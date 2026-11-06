@@ -9,6 +9,7 @@ import {
   summarizeRedacted,
   toRedactedText,
 } from '../services/redact';
+import { ExtractionSchema, SummarySchema } from '../services/schemas';
 import type {
   FlowPorts,
   RedactOutcome,
@@ -50,15 +51,18 @@ async function dataUrlToPart(
   return { mimeType: mime as 'image/jpeg' | 'image/png', base64 };
 }
 
-export function createInterimRealPorts(
-  app: FirebaseApp,
-  mode: AppMode,
-): FlowPorts {
-  const service = new HybridService(mode, (m) => createRealModel(app, m));
+export function createRealPorts(app: FirebaseApp, mode: AppMode): FlowPorts {
+  const service = new HybridService(
+    mode,
+    (m, schema) => createRealModel(app, m, schema),
+    { schema: SummarySchema },
+  );
   // I1: extraction ALWAYS runs on-device, independent of the UI mode, so
   // raw document text can never route to the cloud from this step.
-  const extractor = new HybridService('ONLY_ON_DEVICE', (m) =>
-    createRealModel(app, m),
+  const extractor = new HybridService(
+    'ONLY_ON_DEVICE',
+    (m, schema) => createRealModel(app, m, schema),
+    { schema: ExtractionSchema },
   );
   return {
     mode,

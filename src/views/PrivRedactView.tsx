@@ -85,10 +85,14 @@ export default function PrivRedactView({
           manual.map((text) => ({ text, type: 'manual' })),
         ).redactedText;
 
-  const toggleManual = (word: string) =>
+  // Tapping invalidates any summary: the next run must cover the union of
+  // model spans + manual words (I1: flagged PII must never reach cloud).
+  const toggleManual = (word: string) => {
     setManual((prev) =>
       prev.includes(word) ? prev.filter((w) => w !== word) : [...prev, word],
     );
+    setSummary(null);
+  };
 
   const [summaryRunning, setSummaryRunning] = useState(false);
   const [summary, setSummary] = useState<DocSummary | null>(null);
@@ -231,11 +235,19 @@ export default function PrivRedactView({
         onChange={changeMode}
         disabled={initUi === 'downloading' || redactRunning}
       />
-      {initUi === 'idle' && (
-        <button onClick={enableAI}>
-          {resumable ? 'Resume download' : 'Enable on-device AI'}
-        </button>
-      )}
+      {availability === 'unsupported' ? (
+        <p role="note">
+          Redaction is unavailable in this browser (extraction runs on-device
+          only, so there is nothing a cloud fallback could summarize without
+          seeing raw PII).
+        </p>
+      ) : (
+        <>
+          {initUi === 'idle' && (
+            <button onClick={enableAI}>
+              {resumable ? 'Resume download' : 'Enable on-device AI'}
+            </button>
+          )}
       {initUi === 'downloading' && (
         <div>
           <p>Downloading on-device model… {Math.round(progress * 100)}%</p>
@@ -268,11 +280,17 @@ export default function PrivRedactView({
             summary={summary}
             running={summaryRunning}
             error={summaryError}
+            canRun={displayText !== null}
+            onRun={() => {
+              if (displayText !== null) runSummary(displayText);
+            }}
             onRetry={() => {
-              if (redactedText !== null) runSummary(redactedText);
+              if (displayText !== null) runSummary(displayText);
             }}
           />
         </div>
+      )}
+        </>
       )}
       <h2>Routing dashboard</h2>
       <RoutingDashboard receipts={receipts} />

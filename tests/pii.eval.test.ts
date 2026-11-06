@@ -148,21 +148,26 @@ describe('policy-wiring eval (scripted mocks, NOT a recall measure)', () => {
       { text: fx.text },
     );
     expect(out.degraded).toBe(true);
+    for (const p of fx.plantedPii) expect(out.redacted).not.toContain(p.span);
+    expect(out.redacted).not.toMatch(/[A-Za-z0-9]/);
   });
 
   it('unfound span → redact-all (fail closed)', async () => {
+    const fx = invoice as Fixture;
     const out = await extractAndRedact(
       stubGenerate(
         JSON.stringify({
           spans: [
             { text: 'ZZZ-not-in-doc', type: 'name', confidence: 0.99 },
           ],
-          redactedText: invoice.text,
+          redactedText: fx.text,
         }),
       ),
-      { text: invoice.text },
+      { text: fx.text },
     );
     expect(out.degraded).toBe(true);
+    for (const p of fx.plantedPii) expect(out.redacted).not.toContain(p.span);
+    expect(out.redacted).not.toMatch(/[A-Za-z0-9]/);
   });
 
   it('empty redactedText + zero spans → NOT_A_DOCUMENT copy', async () => {
@@ -198,6 +203,8 @@ describe('policy-wiring eval (scripted mocks, NOT a recall measure)', () => {
         { text: invoice.text },
       );
       expect(out.degraded).toBe(true); // mock text is not JSON → redact-all
+      for (const p of (invoice as Fixture).plantedPii)
+        expect(out.redacted).not.toContain(p.span);
       expect(guard.calls).toHaveLength(0);
     } finally {
       guard.uninstall();
@@ -248,7 +255,9 @@ describe('policy-wiring eval (scripted mocks, NOT a recall measure)', () => {
     const ext = await extractAndRedact(spyGenerate, { text: fx.text });
     await summarizeRedacted(ext.redacted, spyGenerate);
     expect(seen).toHaveLength(2);
+    expect(seen[0]).toContain(fx.plantedPii[0]!.span); // extraction saw raw
     for (const p of fx.plantedPii) expect(seen[1]).not.toContain(p.span);
+    expect(seen[1]).toContain('███'); // ...and redacted reached the summary
   });
 
   it('applySpans/redactAll units', () => {

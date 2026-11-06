@@ -81,6 +81,8 @@ describe('badges / fallback / error / offline states', () => {
       'dataset.source',
       'ON_DEVICE',
     );
+    expect(screen.getAllByText('PREFER_ON_DEVICE').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/\d+ms/).length).toBe(2);
   });
 
   it('device-down PREFER flow falls back to IN_CLOUD with fallback marker', async () => {
@@ -246,6 +248,74 @@ describe('probe notice + gesture rule', () => {
     await user.click(screen.getByLabelText('ONLY_IN_CLOUD'));
     await screen.findByText('Enable on-device AI');
     expect(screen.queryByTestId('badge-redact')).toBeNull();
+  });
+});
+
+describe('manual taps invalidate the summary (I1)', () => {
+  it('tapped words are covered by the re-run summary', async () => {
+    const { factory, instances } = makeFactory();
+    const user = await enableAndPickFixture(factory);
+    await user.click(screen.getByText('Redact PII'));
+    await screen.findByText('Acme Paper Co');
+    await user.click(screen.getByText('Acme', { selector: 'button' }));
+    await user.click(await screen.findByText('Run summary'));
+    await screen.findByText('Acme Paper Co');
+    const calls = instances[0]!.summarizeCalls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toContain('Acme'); // first run predates the tap
+    expect(calls[1]).not.toContain('Acme');
+  });
+});
+
+describe('unsupported browser terminal state (I3)', () => {
+  it('shows unavailable copy with no init loop', async () => {
+    const { factory } = makeFactory();
+    render(
+      <PrivRedactView
+        factory={factory}
+        probeFn={async () => 'unsupported'}
+        fixtures={[INVOICE]}
+      />,
+    );
+    await screen.findByText(/Redaction is unavailable/);
+    expect(screen.queryByText('Enable on-device AI')).toBeNull();
+    expect(screen.queryByText('Redact PII')).toBeNull();
+  });
+});
+
+describe('init progress + timeout UI (T8)', () => {
+  it('shows download progress while init is pending', async () => {
+    const { factory } = makeFactory({ slowInit: true });
+    const user = userEvent.setup();
+    render(
+      <PrivRedactView
+        factory={factory}
+        probeFn={async () => 'available'}
+        fixtures={[INVOICE]}
+      />,
+    );
+    await user.click(await screen.findByText('Enable on-device AI'));
+    await screen.findByText('Cancel');
+    expect(screen.getByText(/Downloading on-device model/)).toBeDefined();
+    expect(screen.getByText(/0%/)).toBeDefined();
+  });
+
+  it('hanging init surfaces the timeout copy', async () => {
+    const { factory } = makeFactory({
+      faults: { hangInit: true },
+      timeoutMs: 50,
+    });
+    const user = userEvent.setup();
+    render(
+      <PrivRedactView
+        factory={factory}
+        probeFn={async () => 'available'}
+        fixtures={[INVOICE]}
+      />,
+    );
+    await user.click(await screen.findByText('Enable on-device AI'));
+    await screen.findByText(/still downloading/);
+    expect(screen.getByText(/Cancel/)).toBeDefined();
   });
 });
 

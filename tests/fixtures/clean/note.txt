@@ -1,2 +1,4 @@
 This note is clean: no keys, no tokens, no private material.
 Contact docs@example.com for questions.
+Localhost debug uses FIREBASE_APPCHECK_DEBUG_TOKEN = true (unquoted: must pass).
+A bare BEGIN PRIVATE KEY mention without dashes must also pass.

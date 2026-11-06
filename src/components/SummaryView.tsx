@@ -4,16 +4,25 @@ export default function SummaryView({
   summary,
   running,
   error,
+  canRun,
+  onRun,
   onRetry,
 }: {
   summary: DocSummary | null;
   running: boolean;
   error: string | null;
+  canRun: boolean;
+  onRun: () => void;
   onRetry: () => void;
 }) {
   return (
     <section aria-label="Summary">
-      {!summary && !running && !error && <p>No summary yet.</p>}
+      {!summary && !running && !error && (
+        <div>
+          <p>No summary yet.</p>
+          {canRun && <button onClick={onRun}>Run summary</button>}
+        </div>
+      )}
       {running && <p>Summarizing…</p>}
       {error && (
         <div role="alert">

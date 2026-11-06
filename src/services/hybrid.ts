@@ -7,6 +7,7 @@ import {
 } from 'firebase/ai';
 import type { FirebaseApp } from 'firebase/app';
 import type { GenerativeModel, HybridParams } from 'firebase/ai';
+import { hybridSchemaParams } from './schemas';
 
 export type AppMode =
   | 'PREFER_ON_DEVICE'
@@ -71,7 +72,7 @@ export interface ModelPort {
   ): Promise<{ response: ModelResponse }>;
 }
 
-export type ModelFactory = (mode: AppMode) => ModelPort;
+export type ModelFactory = (mode: AppMode, schema?: object) => ModelPort;
 
 function toSdkMode(mode: AppMode): InferenceMode {
   return InferenceMode[mode];
@@ -108,6 +109,12 @@ export function mapError(e: unknown): ServiceError {
       'QUOTA',
       'Free-tier quota reached (429). Wait a minute and retry — on-device answers are unaffected.',
       true,
+    );
+  if (/API_NOT_ENABLED|Prompt API|LanguageModel.*undefined/i.test(`${msg} ${code}`))
+    return new ServiceError(
+      'DEVICE_UNAVAILABLE',
+      'On-device AI is not available in this browser (needs Chrome Desktop ≥v139 with the Prompt-API flag).',
+      false,
     );
   // Mock-port errors arrive with a code but no shared base class (the
   // service must not import test doubles); match structurally.
@@ -178,20 +185,15 @@ export function createRealModel(
   schema?: object,
 ): ModelPort {
   const ai = getAI(app, { backend: new GoogleAIBackend() });
-  const params: HybridParams = schema
-    ? {
+  const dual = schema ? hybridSchemaParams(schema, CLOUD_MODEL) : null;
+  // Single cast: our object-typed schema meets the SDK's Schema-branded type.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const params = (dual
+    ? { mode: toSdkMode(mode), ...dual }
+    : {
         mode: toSdkMode(mode),
-        inCloudParams: {
-          model: CLOUD_MODEL,
-          generationConfig: {
-            responseMimeType: 'application/json',
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            responseSchema: schema as any,
-          },
-        },
-        onDeviceParams: { promptOptions: { responseConstraint: schema } },
-      }
-    : { mode: toSdkMode(mode), inCloudParams: { model: CLOUD_MODEL } };
+        inCloudParams: { model: CLOUD_MODEL },
+      }) as HybridParams;
   const model = getGenerativeModel(ai, params);
   // Adapt the SDK model to the narrow port: our prompt union is a subset
   // the SDK types don't model, so the pass-through cast stays contained here.
@@ -205,6 +207,7 @@ export function createRealModel(
 export interface HybridServiceOptions {
   cloudModel?: string;
   timeoutMs?: number;
+  schema?: object;
 }
 
 export class HybridService {
@@ -212,6 +215,7 @@ export class HybridService {
   private initFlight: Promise<void> | null = null;
   private portMemo: ModelPort | null = null;
   private readonly timeoutMs: number;
+  private readonly schema?: object;
 
   constructor(
     private readonly mode: AppMode,
@@ -220,6 +224,7 @@ export class HybridService {
   ) {
     if (opts?.cloudModel) assertAllowedModel(opts.cloudModel);
     this.timeoutMs = opts?.timeoutMs ?? TIMEOUT_MS_DEFAULT;
+    this.schema = opts?.schema;
   }
 
   getState(): InitState {
@@ -227,7 +232,7 @@ export class HybridService {
   }
 
   private port(): ModelPort {
-    if (!this.portMemo) this.portMemo = this.factory(this.mode);
+    if (!this.portMemo) this.portMemo = this.factory(this.mode, this.schema);
     return this.portMemo;
   }
 

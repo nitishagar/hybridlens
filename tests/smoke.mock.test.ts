@@ -157,7 +157,16 @@ describe('banned-gate positive control', () => {
   const clean = new URL('./fixtures/clean/note.txt', import.meta.url).pathname;
 
   it('fails on the banned fixture', () => {
-    expect(() => execFileSync('bash', [gate, banned], { stdio: 'pipe' })).toThrow();
+    let err: unknown;
+    try {
+      execFileSync('bash', [gate, banned], { stdio: 'pipe' });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeDefined();
+    const { status, stderr } = err as { status: number; stderr: Buffer };
+    expect(status).toBe(1);
+    expect(String(stderr)).toMatch(/FAIL/);
   });
 
   it('passes on the clean fixture', () => {
