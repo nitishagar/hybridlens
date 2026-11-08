@@ -25,6 +25,7 @@ Any miss fails the phase until prompt/schema fixed.
 
 ## (c) Network egress
 
-- [ ] HAR saved as `docs/live-check.har`
+- [ ] Raw HAR saved locally (git-ignored, e.g. `docs/live-check.raw.har`)
+- [ ] Sanitized evidence committed: `node scripts/sanitize-har.mjs docs/live-check.raw.har docs/live-check.har`
 - [ ] Zero requests carrying raw PII to googleapis/cloud endpoints
 - Verdict:

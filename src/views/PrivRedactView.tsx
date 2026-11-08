@@ -30,8 +30,8 @@ const DEMO_FIXTURES: DocOption[] = [
   },
 ];
 
-const PLACEHOLDER_IMG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJErkJggg==';
+export const PLACEHOLDER_IMG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 function copyOf(e: unknown): string {
   return e instanceof ServiceError ? e.copy : String(e);
