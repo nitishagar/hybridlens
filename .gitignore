@@ -7,4 +7,6 @@ coverage/
 *.har
 # D3: the SANITIZED evidence HAR commits normally; raw captures stay ignored.
 !docs/live-check.har
+# Sanitizer test fixture (fake secrets; gate-excluded dir).
+!tests/fixtures/banned/dirty.har
 firebase-debug.log
